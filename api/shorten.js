@@ -29,17 +29,15 @@ export default async function handler(req, res) {
       const shortId = nanoid();
       pipeline.set(shortId, cleanUrl);
 
-      // Vercel-এর অরিজিনাল রিডাইরেক্ট রুট
-      const originRoute = `\({protocol}://\){host}/r/${shortId}`;
-      const cleanHost = host.replace(/https?:\/\//, '');
+      const targetRoute = `\({protocol}://\){host}/r/${shortId}`;
 
-      // Google Trusted Dynamic Proxy Format (গুগলের সিকিউরিটি ফিল্টার বাইপাস লিংক)
-      const googleStyleUrl = `https://www.google.com/amp/s/\({cleanHost}/r/\){shortId}`;
+      // Google Translate Proxy Engine (গুগল ডোমেইন কিন্তু নোটিশ ছাড়া সরাসরি রিডাইরেক্ট করে)
+      const googleDirectUrl = `https://translate.google.com/translate?sl=auto&tl=en&u=${encodeURIComponent(targetRoute)}`;
 
       results.push({
         originalUrl: cleanUrl,
         shortId,
-        shortUrl: googleStyleUrl
+        shortUrl: googleDirectUrl
       });
     }
 
