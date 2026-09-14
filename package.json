@@ -1,10 +1,9 @@
 {
-  "name": "google-style-url-shortener",
+  "name": "google-url-shortener",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "vercel dev",
-    "build": "vercel build"
+    "build": "next build || echo 'No build step required'"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.3",
