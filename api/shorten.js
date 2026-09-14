@@ -11,6 +11,7 @@ export default async function handler(req, res) {
 
   try {
     const { urls } = req.body;
+
     if (!urls || !Array.isArray(urls) || urls.length === 0) {
       return res.status(400).json({ error: 'Valid URL array is required.' });
     }
@@ -28,18 +29,27 @@ export default async function handler(req, res) {
       const shortId = nanoid();
       pipeline.set(shortId, cleanUrl);
 
-      // কোনো গুগল প্রেফিক্স ছাড়াই সরাসরি আপনার লিংক জেনারেট হবে
-      const directShortUrl = `\({protocol}://\){host}/r/${shortId}`;
+      // Vercel-এর অরিজিনাল রিডাইরেক্ট রুট
+      const originRoute = `\({protocol}://\){host}/r/${shortId}`;
+      const cleanHost = host.replace(/https?:\/\//, '');
+
+      // Google Trusted Dynamic Proxy Format (গুগলের সিকিউরিটি ফিল্টার বাইপাস লিংক)
+      const googleStyleUrl = `https://www.google.com/amp/s/\({cleanHost}/r/\){shortId}`;
 
       results.push({
         originalUrl: cleanUrl,
         shortId,
-        shortUrl: directShortUrl
+        shortUrl: googleStyleUrl
       });
     }
 
     await pipeline.exec();
-    return res.status(200).json({ success: true, count: results.length, data: results });
+
+    return res.status(200).json({
+      success: true,
+      count: results.length,
+      data: results
+    });
 
   } catch (error) {
     console.error('Shorten API Error:', error);
