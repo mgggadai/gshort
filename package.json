@@ -1,0 +1,13 @@
+{
+  "name": "google-style-url-shortener",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.3",
+    "nanoid": "^3.3.7"
+  }
+}
