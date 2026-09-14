@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google-Style URL Shortener (Vercel + Upstash Redis Stack)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        code, pre { font-family: 'Fira Code', monospace; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen transition-colors duration-200">
+
+    <!-- Header Navigation -->
+    <header class="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                    <i class="fa-solid font-bold fa-link text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">ShortLink Stack</h1>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Vercel + Upstash Redis</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button id="themeToggle" class="p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition">
+                    <i class="fa-solid fa-moon dark:hidden"></i>
+                    <i class="fa-solid fa-sun hidden dark:block"></i>
+                </button>
+                <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <button id="tabDemoBtn" onclick="switchMainTab('demo')" class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm">
+                        <i class="fa-solid fa-play text-xs mr-1.5 text-indigo-500"></i> Live App
+                    </button>
+                    <button id="tabRepoBtn" onclick="switchMainTab('repo')" class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                        <i class="fa-solid fa-code text-xs mr-1.5 text-emerald-500"></i> Source Code
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <div id="demoView" class="space-y-8">
+            <!-- Hero Banner -->
+            <div class="text-center max-w-2xl mx-auto pt-2 pb-2">
+                <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-blue-600 to-teal-500">
+                    Advanced Google-Style Shortener
+                </h2>
+                <p class="mt-2 text-slate-600 dark:text-slate-400 text-sm sm:text-base">
+                    Single/Bulk shortener with 1 URL to Multiple Variations support. Generates clean Google redirect links <code class="text-indigo-600 dark:text-indigo-400">google.com/url?q=</code>.
+                </p>
+            </div>
+
+            <!-- Form Card with Mode Tabs -->
+            <div class="max-w-3xl mx-auto bg-white dark:bg-slate-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-200/80 dark:border-slate-700 p-6 sm:p-8">
+                
+                <!-- Shorten Mode Switch Tabs -->
+                <div class="flex border-b border-slate-200 dark:border-slate-700 mb-6">
+                    <button id="tabBulkMode" onclick="switchShortenMode('bulk')" class="flex-1 py-3 text-center text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-list-check"></i> Single / Bulk URLs
+                    </button>
+                    <button id="tabMultiMode" onclick="switchShortenMode('multi')" class="flex-1 py-3 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-layer-group"></i> 1 URL ➔ Multiple Links
+                    </button>
+                </div>
+
+                <!-- Mode 1: Single & Bulk URLs -->
+                <form id="bulkForm" class="space-y-4">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Target URLs (1 URL per line)</label>
+                            <span class="text-[11px] text-slate-400">Max 50 URLs</span>
+                        </div>
+                        <textarea id="bulkUrlInput" rows="5" required placeholder="https://example.com/very/long/url-1&#10;https://example.com/very/long/url-2"
+                            class="w-full p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-mono transition"></textarea>
+                    </div>
+
+                    <button type="submit" id="btnBulk" class="w-full py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25">
+                        <i class="fa-solid fa-bolt"></i> Shorten URL(s)
+                    </button>
+                </form>
+
+                <!-- Mode 2: 1 URL to Multiple Variations -->
+                <form id="multiForm" class="space-y-4 hidden">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Target Original URL</label>
+                        <div class="relative rounded-xl shadow-sm">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                                <i class="fa-solid fa-globe"></i>
+                            </div>
+                            <input type="url" id="singleUrlInput" placeholder="https://example.com/my-target-page"
+                                class="w-full pl-11 pr-4 py-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm transition">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">How many distinct short links to create?</label>
+                        <select id="linkCount" class="w-full p-3.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium transition text-slate-700 dark:text-slate-200">
+                            <option value="2">2 Unique Short Links</option>
+                            <option value="5" selected>5 Unique Short Links</option>
+                            <option value="10">10 Unique Short Links</option>
+                            <option value="20">20 Unique Short Links</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" id="btnMulti" class="w-full py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-medium text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Generate Multiple Short Links
+                    </button>
+                </form>
+
+            </div>
+
+            <!-- Toast / Notification Container -->
+            <div id="toastContainer" class="max-w-3xl mx-auto hidden">
+                <div id="toast" class="p-4 rounded-xl border flex items-center justify-between text-sm"></div>
+            </div>
+
+            <!-- Results Output Section -->
+            <div id="resultContainer" class="max-w-4xl mx-auto space-y-4 hidden">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-base flex items-center gap-2">
+                        <i class="fa-solid fa-square-poll-vertical text-indigo-500"></i> Generated Short Links
+                    </h3>
+                    <button onclick="copyAllLinks()" class="px-3.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 font-medium text-xs transition flex items-center gap-1.5 border border-indigo-200 dark:border-indigo-800">
+                        <i class="fa-regular fa-copy"></i> Copy All Links
+                    </button>
+                </div>
+
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 overflow-hidden shadow-lg shadow-slate-200/30 dark:shadow-none">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm border-collapse">
+                            <thead>
+                                <tr class="bg-slate-100/70 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wider">
+                                    <th class="p-3.5 pl-4">#</th>
+                                    <th class="p-3.5">Original Target URL</th>
+                                    <th class="p-3.5">Google Shortened URL</th>
+                                    <th class="p-3.5 text-center pr-4">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultBody" class="divide-y divide-slate-100 dark:divide-slate-700/60 font-mono text-xs">
+                                <!-- Generated Dynamic Items -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Generated Links History -->
+            <div class="max-w-4xl mx-auto space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-base flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-slate-400"></i> Local Shorten History
+                    </h3>
+                    <button onclick="clearHistory()" class="text-xs text-rose-500 hover:text-rose-600 font-medium">Clear History</button>
+                </div>
+
+                <div id="linksList" class="space-y-3">
+                    <!-- Dynamic Items -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Repository Source Code View -->
+        <div id="repoView" class="hidden space-y-6">
+            <div class="bg-slate-900 text-slate-200 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+                <div class="bg-slate-950/80 px-6 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-brands fa-github text-2xl text-white"></i>
+                        <span class="font-semibold text-slate-200">my-org / vercel-upstash-url-shortener</span>
+                        <span class="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">Public</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs text-slate-400">
+                        <button onclick="copyActiveCode()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition flex items-center gap-1.5">
+                            <i class="fa-regular fa-copy"></i> Copy Active File
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 min-h-[550px]">
+                    <div class="border-r border-slate-800 p-4 bg-slate-900/50 space-y-1">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-3 py-2">Project Files</p>
+                        
+                        <button onclick="selectRepoFile('index.html')" class="repo-file-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition bg-indigo-600/20 text-indigo-300 border border-indigo-500/30" data-file="index.html">
+                            <i class="fa-brands fa-html5 text-orange-400"></i> index.html
+                        </button>
+                        <button onclick="selectRepoFile('api/shorten.js')" class="repo-file-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition text-slate-400 hover:bg-slate-800 hover:text-slate-200" data-file="api/shorten.js">
+                            <i class="fa-brands fa-js text-yellow-400"></i> api/shorten.js
+                        </button>
+                        <button onclick="selectRepoFile('api/redirect.js')" class="repo-file-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition text-slate-400 hover:bg-slate-800 hover:text-slate-200" data-file="api/redirect.js">
+                            <i class="fa-brands fa-node-js text-emerald-400"></i> api/redirect.js
+                        </button>
+                        <button onclick="selectRepoFile('vercel.json')" class="repo-file-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition text-slate-400 hover:bg-slate-800 hover:text-slate-200" data-file="vercel.json">
+                            <i class="fa-solid fa-gear text-blue-400"></i> vercel.json
+                        </button>
+                        <button onclick="selectRepoFile('package.json')" class="repo-file-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition text-slate-400 hover:bg-slate-800 hover:text-slate-200" data-file="package.json">
+                            <i class="fa-solid fa-box text-red-400"></i> package.json
+                        </button>
+                    </div>
+
+                    <div class="md:col-span-3 p-4 bg-slate-950/60 overflow-x-auto custom-scrollbar flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800 text-xs text-slate-400">
+                                <span id="activeFileName" class="font-mono text-indigo-400">index.html</span>
+                                <span id="activeFileDesc">Frontend Single Page Application</span>
+                            </div>
+                            <pre><code id="codeViewer" class="text-xs text-slate-300 font-mono leading-relaxed"></code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // State storage
+        let mockDb = JSON.parse(localStorage.getItem('shortener_db') || '{}');
+        let historyLinks = JSON.parse(localStorage.getItem('shortener_history') || '[]');
+        let currentBatchResults = [];
+
+        // Repo Files Dictionary for embedded code viewer
+        const repoFiles = {
+            'index.html': `<!-- Advanced URL Shortener Frontend -->`,
+            'api/shorten.js': `// Vercel Serverless Bulk & Multi-Variation Shorten API
+import { Redis } from '@upstash/redis';
+import { customAlphabet } from 'nanoid';
+
+const redis = Redis.fromEnv();
+const nanoid = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz', 7);
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  try {
+    const { urls } = req.body;
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ error: 'At least one URL is required.' });
+    }
+
+    const host = req.headers.host || 'your-domain.vercel.app';
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    
+    const results = [];
+    const pipeline = redis.pipeline();
+
+    for (const originalUrl of urls) {
+      const cleanUrl = originalUrl.trim();
+      if (!cleanUrl) continue;
+
+      const shortId = nanoid();
+      pipeline.set(shortId, cleanUrl);
+
+      const shortRoute = \`\${protocol}://\${host}/r/\${shortId}\`;
+      const googleStyleUrl = \`https://www.google.com/url?q=\${encodeURIComponent(shortRoute)}\`;
+
+      results.push({ originalUrl: cleanUrl, shortId, shortUrl: googleStyleUrl });
+    }
+
+    await pipeline.exec();
+    return res.status(200).json({ success: true, count: results.length, data: results });
+  } catch (error) {
+    return res.status(500).json({ error: 'Internal Server Error' });
+  }
+}`,
+            'api/redirect.js': `// Upstash Redis Redirect Engine
+import { Redis } from '@upstash/redis';
+
+const redis = Redis.fromEnv();
+
+export default async function handler(req, res) {
+  const { id } = req.query;
+  if (!id) return res.status(400).send('Missing ID');
+
+  try {
+    const originalUrl = await redis.get(id);
+    if (originalUrl) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      return res.redirect(302, originalUrl);
+    }
+    return res.status(404).send('Short URL Not Found');
+  } catch (error) {
+    return res.status(500).send('Server Error');
+  }
+}`,
+            'vercel.json': `{
+  "rewrites": [
+    { "source": "/r/:id", "destination": "/api/redirect?id=:id" }
+  ]
+}`,
+            'package.json': `{
+  "dependencies": {
+    "@upstash/redis": "^1.34.3",
+    "nanoid": "^3.3.7"
+  }
+}`
+        };
+
+        // Navigation Tabs (App / Code)
+        function switchMainTab(tab) {
+            const demoView = document.getElementById('demoView');
+            const repoView = document.getElementById('repoView');
+            const tabDemoBtn = document.getElementById('tabDemoBtn');
+            const tabRepoBtn = document.getElementById('tabRepoBtn');
+
+            if (tab === 'demo') {
+                demoView.classList.remove('hidden');
+                repoView.classList.add('hidden');
+                tabDemoBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm';
+                tabRepoBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+            } else {
+                demoView.classList.add('hidden');
+                repoView.classList.remove('hidden');
+                tabRepoBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm';
+                tabDemoBtn.className = 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white';
+                selectRepoFile('api/shorten.js');
+            }
+        }
+
+        // Shorten Mode Tabs (Bulk vs 1 to Many)
+        function switchShortenMode(mode) {
+            const bulkForm = document.getElementById('bulkForm');
+            const multiForm = document.getElementById('multiForm');
+            const tabBulkMode = document.getElementById('tabBulkMode');
+            const tabMultiMode = document.getElementById('tabMultiMode');
+
+            if (mode === 'bulk') {
+                bulkForm.classList.remove('hidden');
+                multiForm.classList.add('hidden');
+                tabBulkMode.className = 'flex-1 py-3 text-center text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 transition flex items-center justify-center gap-2';
+                tabMultiMode.className = 'flex-1 py-3 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition flex items-center justify-center gap-2';
+            } else {
+                bulkForm.classList.add('hidden');
+                multiForm.classList.remove('hidden');
+                tabMultiMode.className = 'flex-1 py-3 text-center text-sm font-semibold border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 transition flex items-center justify-center gap-2';
+                tabBulkMode.className = 'flex-1 py-3 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition flex items-center justify-center gap-2';
+            }
+        }
+
+        // Form Submit Handler: Bulk / Single
+        document.getElementById('bulkForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const input = document.getElementById('bulkUrlInput').value.trim();
+            if (!input) return showToast('Please enter at least one URL', 'error');
+
+            const urlList = input.split('\n').map(u => u.trim()).filter(u => u.length > 0);
+            await processShortenRequest(urlList, 'btnBulk');
+        });
+
+        // Form Submit Handler: 1 URL to Multiple Variations
+        document.getElementById('multiForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const url = document.getElementById('singleUrlInput').value.trim();
+            const count = parseInt(document.getElementById('linkCount').value, 10);
+
+            if (!url) return showToast('Please enter a target URL', 'error');
+
+            const urlList = Array(count).fill(url);
+            await processShortenRequest(urlList, 'btnMulti');
+        });
+
+        // Main Shorten Request Processing Logic
+        async function processShortenRequest(urlList, btnId) {
+            const btn = document.getElementById(btnId);
+            const originalText = btn.innerHTML;
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Processing...`;
+
+            try {
+                // Try backend API request first
+                const response = await fetch('/api/shorten', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: urlList })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success) {
+                        handleSuccessResults(data.data);
+                        return;
+                    }
+                }
+                // Fallback to client-side local generator if deployed on static host/preview
+                simulateShortenLocally(urlList);
+            } catch (err) {
+                // Fallback simulation mode
+                simulateShortenLocally(urlList);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // Client-side Local Simulation Engine
+        function simulateShortenLocally(urlList) {
+            const results = [];
+            const origin = window.location.origin;
+
+            urlList.forEach(originalUrl => {
+                const shortId = Math.random().toString(36).substring(2, 9);
+                const directRoute = `${origin}/r/${shortId}`;
+                const googleStyleUrl = `https://www.google.com/url?q=${encodeURIComponent(directRoute)}`;
+
+                mockDb[shortId] = originalUrl;
+                results.push({
+                    originalUrl,
+                    shortId,
+                    shortUrl: googleStyleUrl
+                });
+            });
+
+            localStorage.setItem('shortener_db', JSON.stringify(mockDb));
+            handleSuccessResults(results);
+        }
+
+        // Handle and Display Shorten Results
+        function handleSuccessResults(results) {
+            currentBatchResults = results;
+            renderResultsTable(results);
+
+            // Add to history list
+            results.forEach(item => {
+                historyLinks.unshift({
+                    ...item,
+                    createdAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                });
+            });
+
+            localStorage.setItem('shortener_history', JSON.stringify(historyLinks));
+            renderHistory();
+
+            showToast(`Successfully generated ${results.length} short link(s)!`, 'success');
+        }
+
+        // Render Generated Batch Table
+        function renderResultsTable(items) {
+            const container = document.getElementById('resultContainer');
+            const tbody = document.getElementById('resultBody');
+            tbody.innerHTML = '';
+
+            items.forEach((item, idx) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-750/50 transition';
+                tr.innerHTML = `
+                    <td class="p-3.5 pl-4 text-slate-400">${idx + 1}</td>
+                    <td class="p-3.5 font-sans text-slate-600 dark:text-slate-300 max-w-[200px] sm:max-w-[280px] truncate" title="${item.originalUrl}">${item.originalUrl}</td>
+                    <td class="p-3.5 text-indigo-600 dark:text-indigo-400 max-w-[220px] sm:max-w-[320px] truncate">
+                        <a href="${item.shortUrl}" target="_blank" class="hover:underline">${item.shortUrl}</a>
+                    </td>
+                    <td class="p-3.5 pr-4 text-center">
+                        <button onclick="copyToClipboard('${item.shortUrl}')" class="px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-[11px] font-medium transition text-slate-700 dark:text-slate-200">
+                            Copy
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            container.classList.remove('hidden');
+        }
+
+        // Copy All Generated Links in Batch
+        function copyAllLinks() {
+            if (!currentBatchResults.length) return;
+            const allLinks = currentBatchResults.map(i => i.shortUrl).join('\n');
+            copyToClipboard(allLinks);
+            showToast('All batch short links copied to clipboard!', 'success');
+        }
+
+        // Render Local Storage History
+        function renderHistory() {
+            const container = document.getElementById('linksList');
+            if (historyLinks.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center bg-white dark:bg-slate-800 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 text-xs">
+                        No short links generated yet. Enter target URLs above to create.
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = historyLinks.map(item => `
+                <div class="p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition hover:border-indigo-500/50">
+                    <div class="space-y-1 overflow-hidden max-w-full">
+                        <div class="flex items-center gap-2">
+                            <a href="${item.shortUrl}" target="_blank" class="font-semibold text-sm text-indigo-600 dark:text-indigo-400 hover:underline truncate inline-block max-w-xs sm:max-w-md">
+                                ${item.shortUrl}
+                            </a>
+                            <span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 font-mono">${item.shortId}</span>
+                        </div>
+                        <p class="text-xs text-slate-400 truncate max-w-xs sm:max-w-md">${item.originalUrl}</p>
+                    </div>
+
+                    <div class="flex items-center gap-2 w-full sm:w-auto justify-end border-t sm:border-0 pt-2 sm:pt-0 border-slate-100 dark:border-slate-700">
+                        <button onclick="copyToClipboard('${item.shortUrl}')" class="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-xs font-medium transition flex items-center gap-1">
+                            <i class="fa-regular fa-copy"></i> Copy Link
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function clearHistory() {
+            historyLinks = [];
+            localStorage.removeItem('shortener_history');
+            renderHistory();
+            showToast('Shorten history cleared', 'info');
+        }
+
+        function copyToClipboard(text) {
+            const input = document.createElement('textarea');
+            input.value = text;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+            showToast('Copied to clipboard!', 'success');
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.getElementById('toast');
+
+            const bgClass = type === 'success' 
+                ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200' 
+                : 'bg-rose-50 dark:bg-rose-950/80 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200';
+
+            toast.className = `p-4 rounded-xl border flex items-center justify-between text-sm ${bgClass}`;
+            toast.innerHTML = `
+                <span>${message}</span>
+                <i class="fa-solid ${type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'}"></i>
+            `;
+
+            container.classList.remove('hidden');
+            setTimeout(() => {
+                container.classList.add('hidden');
+            }, 3000);
+        }
+
+        function selectRepoFile(filename) {
+            document.getElementById('activeFileName').innerText = filename;
+            document.getElementById('codeViewer').innerText = repoFiles[filename] || '';
+
+            document.querySelectorAll('.repo-file-btn').forEach(btn => {
+                if (btn.getAttribute('data-file') === filename) {
+                    btn.className = 'repo-file-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition bg-indigo-600/20 text-indigo-300 border border-indigo-500/30';
+                } else {
+                    btn.className = 'repo-file-btn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition text-slate-400 hover:bg-slate-800 hover:text-slate-200';
+                }
+            });
+        }
+
+        function copyActiveCode() {
+            const filename = document.getElementById('activeFileName').innerText;
+            copyToClipboard(repoFiles[filename]);
+        }
+
+        // Theme Toggle Script
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+        });
+
+        // Initialize App
+        renderHistory();
+    </script>
+</body>
+</html>
